@@ -1701,6 +1701,54 @@ public class ChunkTests
         Assert.Equal(0, c.GetRead<Velocity>()[0].X);   // AddRow обнулил строку
     }
 
+    // Имя честное: различить sizeof(long) и Unsafe.SizeOf<Entity>() тестом нельзя,
+    // пока обе величины равны восьми. Этот тест проверяет ровно то, что умеет —
+    // согласованность трёх способов добраться до строки.
+    [Fact]
+    public void Multi_row_addressing_stays_consistent_across_accessors()
+    {
+        var c = PosVelChunk();
+        for (int i = 0; i < 5; i++) c.AddRow(new Entity(100 + i, 1));
+
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.Equal(100 + i, c.EntityAt(i).Id);
+            Assert.Equal(c.Entities[i], c.EntityAt(i));
+        }
+
+        c.TagAt(3) = TagType<Dead>.Bit;
+        Assert.True(c.Tags[3].HasAll(TagType<Dead>.Bit));
+        Assert.True(c.Tags[2].IsEmpty);   // соседняя строка не задета
+    }
+
+    // А вот это ловит настоящий рассинхрон: если ChunkLayout зарезервирует под строку
+    // не столько байт, сколько Chunk отсчитывает, колонки наедут друг на друга.
+    [Fact]
+    public void Layout_reserves_room_for_every_row_at_the_types_stride()
+    {
+        var layout = ChunkLayout.Create(Ids(ComponentType<Position>.Id));
+
+        int entityBytes = Unsafe.SizeOf<Entity>() * layout.Capacity;
+        int tagBytes = Unsafe.SizeOf<TagMask>() * layout.Capacity;
+
+        Assert.True(layout.TagOffset >= layout.EntityOffset + entityBytes,
+            "колонка тегов начинается внутри колонки сущностей");
+        Assert.True(layout.ColumnOffsets[0] >= layout.TagOffset + tagBytes,
+            "первая колонка компонента начинается внутри колонки тегов");
+    }
+
+    [Fact]
+    public void EntityAt_and_TagAt_reject_rows_outside_count()
+    {
+        var c = PosVelChunk();
+        c.AddRow(new Entity(1, 1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.EntityAt(1).Id; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.EntityAt(-1).Id; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.TagAt(1).IsEmpty; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.TagAt(999_999).IsEmpty; });
+    }
+
     [Fact]
     public void AddRow_zeroes_the_row_even_when_the_buffer_was_reused()
     {
