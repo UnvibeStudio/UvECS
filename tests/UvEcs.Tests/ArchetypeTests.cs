@@ -86,6 +86,37 @@ public class ArchetypeTests
     }
 
     [Fact]
+    public void A_non_last_empty_chunk_is_never_removed()
+    {
+        // Ровно та защита, ради которой ReleaseChunkIfEmpty удаляет только последний чанк:
+        // удаление из середины сдвинуло бы ChunkIndex в EntityRecord соседних чанков.
+        // Без этого теста будущая «оптимизация» вернула бы удаление из середины молча.
+        var pool = new ChunkPool();
+        var a = PosVel();
+
+        // Три чанка: [полный c0][полный c1][пустой c2]
+        a.GetOrCreateChunkWithSpace(pool, out _);
+        var c0 = a.Chunks[0];
+        for (int i = 0; i < c0.Capacity; i++) c0.AddRow(new Entity(i, 1));
+
+        a.GetOrCreateChunkWithSpace(pool, out _);
+        var c1 = a.Chunks[1];
+        for (int i = 0; i < c1.Capacity; i++) c1.AddRow(new Entity(10_000 + i, 1));
+
+        a.GetOrCreateChunkWithSpace(pool, out int i2);   // c2 пустой
+        Assert.Equal(3, a.Chunks.Count);
+
+        // Опустошаем СРЕДНИЙ чанк и пробуем освободить его.
+        while (!c1.IsEmpty) c1.SwapRemove(c1.Count - 1);
+        a.ReleaseChunkIfEmpty(1, pool);
+
+        // c1 не последний -> остаётся на месте, порядок и число чанков не меняются.
+        Assert.Equal(3, a.Chunks.Count);
+        Assert.Same(c0, a.Chunks[0]);
+        Assert.Same(c1, a.Chunks[1]);
+    }
+
+    [Fact]
     public void Add_and_remove_edges_are_stored_and_found()
     {
         var a = PosVel(0);
