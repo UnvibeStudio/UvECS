@@ -82,4 +82,42 @@ public class ChunkLayoutTests
         var ex = Assert.Throws<InvalidOperationException>(() => ChunkLayout.Create(new[] { fakeId }));
         Assert.Contains("не помещается", ex.Message);
     }
+
+    // Независимый оракул. Предыдущий тест круговой: Create сам вызывает TotalBytesFor
+    // в цикле поиска ёмкости, поэтому его постусловие выполняется тождественно.
+    // Здесь ожидание посчитано руками и не зависит от кода.
+    [Fact]
+    public void Capacity_matches_a_hand_computed_oracle()
+    {
+        // Position(12) + Velocity(12) + Health(8) = 32; шаг = 8(Entity) + 8(TagMask) + 32 = 48.
+        // 16384 / 48 = 341, но при 341: Entity 2728 -> Align 2736, Tag -> 5472, Position -> 9568,
+        // Velocity -> 13664, Health -> 16392 > 16384. Не влезает.
+        // При 340 все колонки кратны 16 без добивки: 2720, 5440, 9520, 13600, 16320 <= 16384.
+        var ids = Ids(ComponentType<Position>.Id, ComponentType<Velocity>.Id, ComponentType<Health>.Id);
+        Assert.Equal(340, ChunkLayout.Create(ids).Capacity);
+
+        // Только Position: шаг 28. 16384/28 = 585 -> 16396 > 16384. При 584: 4672+4672+7008 = 16352.
+        var onlyPosition = Ids(ComponentType<Position>.Id);
+        Assert.Equal(584, ChunkLayout.Create(onlyPosition).Capacity);
+    }
+
+    [Fact]
+    public void ColumnOf_returns_minus_one_on_an_empty_archetype()
+    {
+        var layout = ChunkLayout.Create(Array.Empty<int>());
+        Assert.Equal(-1, layout.ColumnOf(ComponentType<Position>.Id));
+    }
+
+    [Fact]
+    public void Layout_does_not_alias_the_caller_array()
+    {
+        var ids = Ids(ComponentType<Position>.Id, ComponentType<Health>.Id);
+        var layout = ChunkLayout.Create(ids);
+        int probe = ids[0];
+
+        ids[0] = 999;   // портим массив вызывающего: сортировка сломана
+
+        Assert.Equal(probe, layout.ComponentIds[0]);           // копия не пострадала
+        Assert.InRange(layout.ColumnOf(probe), 0, 1);          // бинарный поиск по-прежнему работает
+    }
 }

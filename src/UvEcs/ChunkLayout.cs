@@ -19,16 +19,35 @@ public sealed class ChunkLayout
 
     private static int Align(int value) => (value + ColumnAlignment - 1) & ~(ColumnAlignment - 1);
 
-    /// <summary>Сколько байт займёт чанк на <paramref name="capacity"/> сущностей. Публично ради тестов.</summary>
-    public static int TotalBytesFor(int[] componentIds, int capacity)
+    /// <summary>
+    /// Единственное место, где известна раскладка колонок. И расчёт ёмкости, и построение
+    /// смещений идут через него, поэтому разойтись они не могут.
+    /// </summary>
+    /// <param name="offsets">Куда записать смещения колонок компонентов. <c>null</c> — только посчитать размер.</param>
+    /// <returns>Полный размер чанка в байтах при данной ёмкости.</returns>
+    private static int WalkColumns(int[] componentIds, int capacity, int[]? offsets,
+                                   out int entityOffset, out int tagOffset)
     {
         int off = 0;
+
+        entityOffset = off;
         off = Align(off + EntitySize * capacity);
+
+        tagOffset = off;
         off = Align(off + TagSize * capacity);
-        foreach (int id in componentIds)
-            off = Align(off + ComponentRegistry.SizeOf(id) * capacity);
+
+        for (int i = 0; i < componentIds.Length; i++)
+        {
+            if (offsets is not null) offsets[i] = off;
+            off = Align(off + ComponentRegistry.SizeOf(componentIds[i]) * capacity);
+        }
+
         return off;
     }
+
+    /// <summary>Сколько байт займёт чанк на <paramref name="capacity"/> сущностей. Публично ради тестов.</summary>
+    public static int TotalBytesFor(int[] componentIds, int capacity)
+        => WalkColumns(componentIds, capacity, null, out _, out _);
 
     /// <param name="componentIds">Отсортированы по возрастанию.</param>
     public static ChunkLayout Create(int[] componentIds)
@@ -36,6 +55,7 @@ public sealed class ChunkLayout
         int stride = EntitySize + TagSize;
         foreach (int id in componentIds) stride += ComponentRegistry.SizeOf(id);
 
+        // Выравнивание только добавляет байты, поэтому ChunkBytes/stride — верхняя оценка ёмкости.
         int capacity = ChunkPool.ChunkBytes / stride;
         while (capacity > 0 && TotalBytesFor(componentIds, capacity) > ChunkPool.ChunkBytes) capacity--;
 
@@ -44,25 +64,15 @@ public sealed class ChunkLayout
                 $"Архетип не помещается в чанк {ChunkPool.ChunkBytes} б: одна сущность требует {stride} б. " +
                 "Компонент слишком велик.");
 
-        int off = 0;
-        int entityOffset = off;
-        off = Align(off + EntitySize * capacity);
-        int tagOffset = off;
-        off = Align(off + TagSize * capacity);
-
         var offsets = new int[componentIds.Length];
-        for (int i = 0; i < componentIds.Length; i++)
-        {
-            offsets[i] = off;
-            off = Align(off + ComponentRegistry.SizeOf(componentIds[i]) * capacity);
-        }
+        WalkColumns(componentIds, capacity, offsets, out int entityOffset, out int tagOffset);
 
         return new ChunkLayout
         {
             Capacity = capacity,
             EntityOffset = entityOffset,
             TagOffset = tagOffset,
-            ComponentIds = componentIds,
+            ComponentIds = (int[])componentIds.Clone(),   // ColumnOf полагается на сортировку
             ColumnOffsets = offsets,
         };
     }
