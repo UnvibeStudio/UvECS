@@ -1,1 +1,7 @@
+# .NET build artefacts
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Superpowers scratch (ledger, briefs, reports, diffs)
 .superpowers/
