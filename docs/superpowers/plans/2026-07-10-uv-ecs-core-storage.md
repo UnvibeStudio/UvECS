@@ -1499,8 +1499,12 @@ namespace UvEcs;
 public sealed class ChunkLayout
 {
     public const int ColumnAlignment = 16;
-    private const int EntitySize = 8;   // int Id + uint Version
-    private const int TagSize = 8;      // TagMask
+
+    // Берём из типов, а не константой: Chunk адресует строки тем же Unsafe.SizeOf,
+    // и разъехаться они не должны. Прибитая восьмёрка в двух местах — это два места,
+    // где надо не забыть, если Entity вырастет.
+    private static readonly int EntitySize = Unsafe.SizeOf<Entity>();
+    private static readonly int TagSize = Unsafe.SizeOf<TagMask>();
 
     public int Capacity { get; private init; }
     public int EntityOffset { get; private init; }
@@ -1857,11 +1861,24 @@ public sealed unsafe class Chunk
     public Span<Entity> Entities => new((void*)(_data + Layout.EntityOffset), Count);
     public Span<TagMask> Tags => new((void*)(_data + Layout.TagOffset), Count);
 
+    /// <remarks>
+    /// Шаг строки берётся из типа, а не из литерала. Восьмёрка была бы верна по совпадению:
+    /// Entity — это int + uint. Добавь кто-нибудь поле, и адресация поехала бы молча,
+    /// без единого падающего теста. Тот же приём уже используется в GetRef&lt;T&gt;.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref Entity EntityAt(int row) => ref Unsafe.AsRef<Entity>((void*)(_data + Layout.EntityOffset + row * sizeof(long)));
+    public ref Entity EntityAt(int row)
+    {
+        if ((uint)row >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(row));
+        return ref Unsafe.AsRef<Entity>((void*)(_data + Layout.EntityOffset + (nint)row * Unsafe.SizeOf<Entity>()));
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref TagMask TagAt(int row) => ref Unsafe.AsRef<TagMask>((void*)(_data + Layout.TagOffset + row * sizeof(long)));
+    public ref TagMask TagAt(int row)
+    {
+        if ((uint)row >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(row));
+        return ref Unsafe.AsRef<TagMask>((void*)(_data + Layout.TagOffset + (nint)row * Unsafe.SizeOf<TagMask>()));
+    }
 
     private int ColumnOrThrow<T>() where T : unmanaged, IComponent
     {
