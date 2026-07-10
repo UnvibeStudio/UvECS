@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace UvEcs.Tests;
@@ -183,23 +184,40 @@ public class ChunkTests
         Assert.Equal(0, dst.GetRead<Health>()[0].Current);        // новая колонка не тронута
     }
 
+    // Имя честное: различить sizeof(long) и Unsafe.SizeOf<Entity>() тестом нельзя,
+    // пока обе величины равны восьми. Этот тест проверяет ровно то, что умеет —
+    // согласованность трёх способов добраться до строки.
     [Fact]
-    public void Row_stride_is_derived_from_the_types_not_from_a_literal()
+    public void Multi_row_addressing_stays_consistent_across_accessors()
     {
-        // Если Entity или TagMask изменят размер, ChunkLayout и Chunk должны поехать
-        // согласованно. Тест фиксирует само согласие, а не число 8.
         var c = PosVelChunk();
         for (int i = 0; i < 5; i++) c.AddRow(new Entity(100 + i, 1));
 
         for (int i = 0; i < 5; i++)
         {
-            Assert.Equal(100 + i, c.EntityAt(i).Id);      // адресация строк не съехала
-            Assert.Equal(c.Entities[i], c.EntityAt(i));   // Span и ref-доступ согласованы
+            Assert.Equal(100 + i, c.EntityAt(i).Id);
+            Assert.Equal(c.Entities[i], c.EntityAt(i));
         }
 
         c.TagAt(3) = TagType<Dead>.Bit;
         Assert.True(c.Tags[3].HasAll(TagType<Dead>.Bit));
-        Assert.True(c.Tags[2].IsEmpty);                   // соседняя строка не задета
+        Assert.True(c.Tags[2].IsEmpty);   // соседняя строка не задета
+    }
+
+    // А вот это ловит настоящий рассинхрон: если ChunkLayout зарезервирует под строку
+    // не столько байт, сколько Chunk отсчитывает, колонки наедут друг на друга.
+    [Fact]
+    public void Layout_reserves_room_for_every_row_at_the_types_stride()
+    {
+        var layout = ChunkLayout.Create(new[] { ComponentType<Position>.Id });
+
+        int entityBytes = Unsafe.SizeOf<Entity>() * layout.Capacity;
+        int tagBytes = Unsafe.SizeOf<TagMask>() * layout.Capacity;
+
+        Assert.True(layout.TagOffset >= layout.EntityOffset + entityBytes,
+            "колонка тегов начинается внутри колонки сущностей");
+        Assert.True(layout.ColumnOffsets[0] >= layout.TagOffset + tagBytes,
+            "первая колонка компонента начинается внутри колонки тегов");
     }
 
     [Fact]

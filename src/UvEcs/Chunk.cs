@@ -46,6 +46,7 @@ public sealed unsafe class Chunk
         return ref Unsafe.AsRef<Entity>((void*)(_data + Layout.EntityOffset + (nint)row * Unsafe.SizeOf<Entity>()));
     }
 
+    /// <remarks>Шаг строки берётся из типа, а не из литерала — см. <see cref="EntityAt"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ref TagMask TagAt(int row)
     {
@@ -70,7 +71,7 @@ public sealed unsafe class Chunk
     public ref T GetRef<T>(int row) where T : unmanaged, IComponent
     {
         if ((uint)row >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(row));
-        return ref Unsafe.AsRef<T>((void*)(_data + Layout.ColumnOffsets[ColumnOrThrow<T>()] + row * Unsafe.SizeOf<T>()));
+        return ref Unsafe.AsRef<T>((void*)(_data + Layout.ColumnOffsets[ColumnOrThrow<T>()] + (nint)row * Unsafe.SizeOf<T>()));
     }
 
     /// <summary>
