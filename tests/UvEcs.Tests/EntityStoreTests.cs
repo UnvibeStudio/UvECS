@@ -102,4 +102,19 @@ public class EntityStoreTests
         Assert.Equal(a.Id, d.Id);
         Assert.Equal(2, e.Id);      // свежий id, свободных больше нет
     }
+
+    [Fact]
+    public void Record_ref_survives_growth_caused_by_later_creates()
+    {
+        var store = new EntityStore();
+        var first = store.Create();
+
+        ref var rec = ref store.GetRecord(first);
+        rec.Row = 111;
+
+        for (int i = 0; i < 20_000; i++) store.Create();   // перешагиваем несколько страниц
+
+        rec.Row = 222;                                     // пишем через ref, взятый до роста
+        Assert.Equal(222, store.GetRecord(first).Row);     // запись видна через свежий поиск
+    }
 }
