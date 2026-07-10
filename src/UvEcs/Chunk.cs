@@ -34,11 +34,24 @@ public sealed unsafe class Chunk
     public Span<Entity> Entities => new((void*)(_data + Layout.EntityOffset), Count);
     public Span<TagMask> Tags => new((void*)(_data + Layout.TagOffset), Count);
 
+    /// <remarks>
+    /// Шаг строки берётся из типа, а не из литерала. Восьмёрка была бы верна по совпадению:
+    /// Entity — это int + uint. Добавь кто-нибудь поле, и адресация поехала бы молча,
+    /// без единого падающего теста. Тот же приём уже используется в GetRef&lt;T&gt;.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref Entity EntityAt(int row) => ref Unsafe.AsRef<Entity>((void*)(_data + Layout.EntityOffset + row * sizeof(long)));
+    public ref Entity EntityAt(int row)
+    {
+        if ((uint)row >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(row));
+        return ref Unsafe.AsRef<Entity>((void*)(_data + Layout.EntityOffset + (nint)row * Unsafe.SizeOf<Entity>()));
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ref TagMask TagAt(int row) => ref Unsafe.AsRef<TagMask>((void*)(_data + Layout.TagOffset + row * sizeof(long)));
+    public ref TagMask TagAt(int row)
+    {
+        if ((uint)row >= (uint)Count) throw new ArgumentOutOfRangeException(nameof(row));
+        return ref Unsafe.AsRef<TagMask>((void*)(_data + Layout.TagOffset + (nint)row * Unsafe.SizeOf<TagMask>()));
+    }
 
     private int ColumnOrThrow<T>() where T : unmanaged, IComponent
     {

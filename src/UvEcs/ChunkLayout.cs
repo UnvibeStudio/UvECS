@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace UvEcs;
 
 /// <summary>
@@ -8,8 +10,12 @@ namespace UvEcs;
 public sealed class ChunkLayout
 {
     public const int ColumnAlignment = 16;
-    private const int EntitySize = 8;   // int Id + uint Version
-    private const int TagSize = 8;      // TagMask
+
+    // Берём из типов, а не константой: Chunk адресует строки тем же Unsafe.SizeOf,
+    // и разъехаться они не должны. Прибитая восьмёрка в двух местах — это два места,
+    // где надо не забыть, если Entity вырастет.
+    private static readonly int EntitySize = Unsafe.SizeOf<Entity>();
+    private static readonly int TagSize = Unsafe.SizeOf<TagMask>();
 
     public int Capacity { get; private init; }
     public int EntityOffset { get; private init; }

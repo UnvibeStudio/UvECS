@@ -182,4 +182,35 @@ public class ChunkTests
         Assert.True(dst.Tags[0].HasAll(TagType<InCombat>.Bit));   // теги перенеслись
         Assert.Equal(0, dst.GetRead<Health>()[0].Current);        // новая колонка не тронута
     }
+
+    [Fact]
+    public void Row_stride_is_derived_from_the_types_not_from_a_literal()
+    {
+        // Если Entity или TagMask изменят размер, ChunkLayout и Chunk должны поехать
+        // согласованно. Тест фиксирует само согласие, а не число 8.
+        var c = PosVelChunk();
+        for (int i = 0; i < 5; i++) c.AddRow(new Entity(100 + i, 1));
+
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.Equal(100 + i, c.EntityAt(i).Id);      // адресация строк не съехала
+            Assert.Equal(c.Entities[i], c.EntityAt(i));   // Span и ref-доступ согласованы
+        }
+
+        c.TagAt(3) = TagType<Dead>.Bit;
+        Assert.True(c.Tags[3].HasAll(TagType<Dead>.Bit));
+        Assert.True(c.Tags[2].IsEmpty);                   // соседняя строка не задета
+    }
+
+    [Fact]
+    public void EntityAt_and_TagAt_reject_rows_outside_count()
+    {
+        var c = PosVelChunk();
+        c.AddRow(new Entity(1, 1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.EntityAt(1).Id; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.EntityAt(-1).Id; });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.TagAt(1); });
+        Assert.Throws<ArgumentOutOfRangeException>(() => { _ = c.TagAt(999_999); });
+    }
 }
