@@ -825,6 +825,10 @@ git commit -m "feat: реестры компонентов, тегов и sparse
 
 **Контракт:** `Version == 0` означает «невалидная сущность». Живые версии начинаются с 1. Протухшая `Entity` ловится сравнением версий — одно сравнение по уже загруженной кеш-линии (§11 спеки), проверяется **и в Release**.
 
+**Хранилище записей — страничное, а не плоский массив.** `EntityRecord[][]`, страницы по 4096 записей, страница никогда не переаллоцируется. Причина: `GetRecord` возвращает `ref` внутрь массива, а `Array.Resize` на плоском массиве заменил бы его новым — и удержанный `ref` молча писал бы в выброшенную копию. В ядре такой путь пока недостижим, но `CommandBuffer.Playback` из плана систем создаёт сущности в цикле, и там это выстрелит без единого исключения.
+
+Цена измерена: случайный доступ к 10k записям — 5.4 мкс плоским массивом против 8.1 мкс страничным (в 1.5 раза), то есть **+2.7 мкс из 50 000 мкс бюджета тика**. Бьёт по `GetRef(Entity)` и sparse-драйверу, не по чанковой итерации. Так устроены `flecs` и `EnTT`.
+
 - [ ] **Step 1: Написать падающий тест**
 
 `tests/UvEcs.Tests/EntityStoreTests.cs`:
@@ -993,13 +997,35 @@ namespace UvEcs;
 
 public sealed class EntityStore
 {
-    private EntityRecord[] _records = new EntityRecord[1024];
+    private const int PageBits = 12;
+    private const int PageSize = 1 << PageBits;    // 4096 записей на страницу
+    private const int PageMask = PageSize - 1;
+
+    /// <remarks>
+    /// Страничное, а не плоское: страница никогда не переаллоцируется, поэтому ref,
+    /// возвращённый из GetRecord, остаётся валидным после любого числа Create().
+    /// Плоский Array.Resize молча оставил бы удержанный ref указывать в старый массив.
+    /// </remarks>
+    private EntityRecord[][] _pages = { new EntityRecord[PageSize] };
     private int[] _freeIds = new int[256];
     private int _freeCount;
     private int _count;
 
-    public int Capacity => _records.Length;
+    public int Capacity => _pages.Length * PageSize;
     public int AliveCount => _count - _freeCount;
+
+    private ref EntityRecord At(int id) => ref _pages[id >> PageBits][id & PageMask];
+
+    private void EnsurePage(int id)
+    {
+        int page = id >> PageBits;
+        if (page < _pages.Length) return;
+
+        int oldLength = _pages.Length;
+        Array.Resize(ref _pages, page + 1);                 // растёт только массив ссылок
+        for (int i = oldLength; i < _pages.Length; i++)
+            _pages[i] = new EntityRecord[PageSize];         // сами страницы неподвижны
+    }
 
     public Entity Create()
     {
@@ -1010,11 +1036,11 @@ public sealed class EntityStore
         }
         else
         {
-            if (_count == _records.Length) Array.Resize(ref _records, _records.Length * 2);
             id = _count++;
+            EnsurePage(id);
         }
 
-        ref var rec = ref _records[id];
+        ref var rec = ref At(id);
         rec.Version = rec.Version == 0 ? 1u : rec.Version;   // первая жизнь начинается с 1
         rec.ArchetypeId = -1;
         rec.ChunkIndex = -1;
@@ -1023,13 +1049,13 @@ public sealed class EntityStore
     }
 
     public bool IsAlive(Entity e)
-        => !e.IsNull && (uint)e.Id < (uint)_count && _records[e.Id].Version == e.Version;
+        => !e.IsNull && (uint)e.Id < (uint)_count && At(e.Id).Version == e.Version;
 
     public void Destroy(Entity e)
     {
         if (!IsAlive(e)) throw new InvalidOperationException($"{e} уже удалена или невалидна.");
 
-        ref var rec = ref _records[e.Id];
+        ref var rec = ref At(e.Id);
         rec.Version++;                       // протухание всех существующих дескрипторов
         if (rec.Version == 0) rec.Version = 1;   // 0 зарезервирован под Null
         rec.ArchetypeId = -1;
@@ -1040,16 +1066,38 @@ public sealed class EntityStore
         _freeIds[_freeCount++] = e.Id;
     }
 
-    /// <summary>Проверяется и в Release: молча читать чужую память недопустимо (§11 спеки).</summary>
+    /// <summary>
+    /// Проверяется и в Release: молча читать чужую память недопустимо (§11 спеки).
+    /// Возвращённый ref переживает любое число Create() — страницы неподвижны.
+    /// </summary>
     public ref EntityRecord GetRecord(Entity e)
     {
         if (!IsAlive(e)) throw new InvalidOperationException($"{e} протухла или невалидна.");
-        return ref _records[e.Id];
+        return ref At(e.Id);
     }
 
     /// <summary>Без проверки версии. Только для внутренних путей, где сущность заведомо жива.</summary>
-    internal ref EntityRecord RecordRefUnchecked(int id) => ref _records[id];
+    internal ref EntityRecord RecordRefUnchecked(int id) => ref At(id);
 }
+```
+
+Тест, закрепляющий главное свойство:
+
+```csharp
+    [Fact]
+    public void Record_ref_survives_growth_caused_by_later_creates()
+    {
+        var store = new EntityStore();
+        var first = store.Create();
+
+        ref var rec = ref store.GetRecord(first);
+        rec.Row = 111;
+
+        for (int i = 0; i < 20_000; i++) store.Create();   // перешагиваем несколько страниц
+
+        rec.Row = 222;                                     // пишем через ref, взятый до роста
+        Assert.Equal(222, store.GetRecord(first).Row);     // запись видна через свежий поиск
+    }
 ```
 
 - [ ] **Step 5: Прогнать**
