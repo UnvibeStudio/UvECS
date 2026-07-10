@@ -96,4 +96,6 @@ public sealed partial class World
     public T Get<T>(Entity e) where T : unmanaged, IComponent => GetRef<T>(e);
 
     public void Set<T>(Entity e, T value) where T : unmanaged, IComponent => GetRef<T>(e) = value;
+
+    public QueryBuilder Query() => new(this);
 }
