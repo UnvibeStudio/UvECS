@@ -67,4 +67,29 @@ public class ChunkPoolTests
         var pool = new ChunkPool();
         Assert.Throws<ArgumentException>(() => pool.Return(new byte[10]));
     }
+
+    [Fact]
+    public void Returning_the_same_buffer_twice_throws()
+    {
+        // Иначе следующие два Rent() отдадут одну память двум владельцам — молча.
+        var pool = new ChunkPool();
+        var buf = pool.Rent();
+        pool.Return(buf);
+
+        Assert.Throws<InvalidOperationException>(() => pool.Return(buf));
+    }
+
+    [Fact]
+    public void Rent_never_hands_out_the_same_buffer_to_two_owners()
+    {
+        var pool = new ChunkPool();
+        var a = pool.Rent();
+        pool.Return(a);
+
+        var b = pool.Rent();
+        var c = pool.Rent();
+
+        Assert.Same(a, b);
+        Assert.NotSame(b, c);
+    }
 }
