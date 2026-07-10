@@ -82,6 +82,26 @@ public class WorldTests
     }
 
     [Fact]
+    public void Destroying_the_middle_fixes_the_moved_entitys_row()
+    {
+        // Единственный тест, который отличает починенный Row от протухшего.
+        // Удали строку movedRec.Row = row в World, и упадёт только он: IsAlive и
+        // EntityCount смотрят на Version, а не на Row. Читаем Row напрямую —
+        // World.Entities открыт internal ровно для этого.
+        var w = new World();
+        var a = w.Create();
+        var b = w.Create();
+        var c = w.Create();            // строки 0, 1, 2 в одном чанке
+
+        w.Destroy(a);                  // последняя строка (c) переезжает в строку 0
+
+        Assert.Equal(0, w.Entities.GetRecord(c).Row);   // Row починен
+        Assert.Equal(1, w.Entities.GetRecord(b).Row);   // соседа не тронули
+        Assert.True(w.IsAlive(b));
+        Assert.True(w.IsAlive(c));
+    }
+
+    [Fact]
     public void Same_component_set_produces_the_same_archetype()
     {
         var w = new World();
