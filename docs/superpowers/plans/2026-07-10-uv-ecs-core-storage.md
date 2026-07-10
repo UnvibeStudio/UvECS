@@ -3297,6 +3297,21 @@ public class SparseSetTests
     }
 
     [Fact]
+    public void Grown_slots_are_absent_not_zero()
+    {
+        // Ловит регрессию к нулевой заливке в EnsureSparse: 0 — валидный плотный
+        // индекс, поэтому непронумерованная сущность выглядела бы носителем.
+        // Верни Array.Fill(..., Absent) на default(int), и упадёт только этот тест.
+        var s = new SparseSet<QuestFlag>();
+        s.Add(100_000, new QuestFlag { Id = 3 });   // растит sparse далеко за начальную ёмкость
+
+        Assert.False(s.Has(0));       // сущность 0 никогда не добавлялась
+        Assert.False(s.Has(50));      // и эта — в выросшем хвосте, но не тронута
+        Assert.False(s.Has(99_999));
+        Assert.Throws<InvalidOperationException>(() => s.GetRef(50));
+    }
+
+    [Fact]
     public void Values_are_parallel_to_entities()
     {
         var s = new SparseSet<GuildBuff>();
