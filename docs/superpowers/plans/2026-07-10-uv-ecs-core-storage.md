@@ -1122,7 +1122,13 @@ git commit -m "feat: Entity как generational index и EntityStore с free-lis
 
 **Interfaces:**
 - Consumes: ничего.
-- Produces: `sealed class ChunkPool` — `const int ChunkBytes = 16384`, `const int Alignment = 64`, `byte[] Rent()`, `void Return(byte[])`, `int FreeCount { get; }`, `int TotalAllocated { get; }`; `static nint AlignedStart(byte[] buffer)` — возвращает выровненный на 64 адрес внутри буфера.
+- Produces: `sealed class ChunkPool` — `const int ChunkBytes = 16384`, `const int Alignment = 64`, `byte[] Rent()`, `void Return(byte[])`, `int FreeCount { get; }`, `int TotalAllocated { get; }`; `internal static nint AlignedStart(byte[] buffer)` — возвращает выровненный на 64 адрес внутри буфера.
+
+**Две защиты, без которых пул опасен:**
+
+`AlignedStart` — **`internal`, а не `public`**. Он законен исключительно потому, что буфер пиннут на POH; вызванный на обычном массиве, он вернёт адрес, который протухнет после ближайшей сборки мусора. Публичный метод, принимающий любой `byte[]`, — приглашение к этому. `Chunk` живёт в той же сборке, тестам открыт `InternalsVisibleTo`.
+
+`Return` **отвергает повторный возврат**. Без этого `Return(buf); Return(buf);` кладёт одну ссылку в стек дважды, и следующие два `Rent()` отдают её двум владельцам: два архетипа пишут в одну память, считая её своей, без единого исключения. Проверка `_owned.Contains` этого не ловит — членство в `_owned` навсегда. Нужно отдельное множество «сейчас свободных».
 
 **Обоснование (§5 спеки):** POH-массив закреплён навсегда, `Dispose` не нужен. Но POH выравнивает только на 8 байт (из 200 массивов на границу 64 попали 25), поэтому указатель сдвигается внутри буфера. Отсюда размер `16384 + 64`. Все чанки одного размера, поэтому пул один на мир и чанки взаимозаменяемы между архетипами.
 
@@ -1229,13 +1235,19 @@ public sealed class ChunkPool
 
     private readonly Stack<byte[]> _free = new();
     private readonly HashSet<byte[]> _owned = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<byte[]> _currentlyFree = new(ReferenceEqualityComparer.Instance);
 
     public int FreeCount => _free.Count;
     public int TotalAllocated => _owned.Count;
 
     public byte[] Rent()
     {
-        if (_free.Count > 0) return _free.Pop();
+        if (_free.Count > 0)
+        {
+            var reused = _free.Pop();
+            _currentlyFree.Remove(reused);
+            return reused;
+        }
 
         // Pinned Object Heap: массив закреплён навсегда, Dispose не нужен, GC его не двигает.
         var buffer = GC.AllocateUninitializedArray<byte>(ChunkBytes + Alignment, pinned: true);
@@ -1243,24 +1255,66 @@ public sealed class ChunkPool
         return buffer;
     }
 
+    /// <summary>
+    /// Повторный возврат — ошибка, а не мелочь: он положил бы одну ссылку в стек дважды,
+    /// и следующие два Rent() отдали бы её двум владельцам. Два архетипа писали бы в одну
+    /// память, считая её своей, без единого исключения.
+    /// </summary>
     public void Return(byte[] buffer)
     {
         if (!_owned.Contains(buffer))
             throw new ArgumentException("Буфер не принадлежит этому пулу.", nameof(buffer));
+
+        if (!_currentlyFree.Add(buffer))
+            throw new InvalidOperationException("Буфер уже возвращён в пул.");
+
         _free.Push(buffer);
     }
 
     /// <summary>
     /// POH гарантирует выравнивание только на 8 байт, поэтому сдвигаемся внутри буфера.
-    /// Массив закреплён, адрес не изменится.
     /// </summary>
-    public static unsafe nint AlignedStart(byte[] buffer)
+    /// <remarks>
+    /// internal, а не public, и это принципиально: метод законен только для буфера,
+    /// выделенного с pinned: true. На обычном массиве он вернёт адрес, который протухнет
+    /// после ближайшей сборки мусора, и ни один тест этого не поймает.
+    /// </remarks>
+    internal static unsafe nint AlignedStart(byte[] buffer)
     {
         nint raw = (nint)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(buffer));
         nint offset = (Alignment - (raw & (Alignment - 1))) & (Alignment - 1);
         return raw + offset;
     }
 }
+```
+
+Тесты, закрепляющие обе защиты:
+
+```csharp
+    [Fact]
+    public void Returning_the_same_buffer_twice_throws()
+    {
+        // Иначе следующие два Rent() отдадут одну память двум владельцам — молча.
+        var pool = new ChunkPool();
+        var buf = pool.Rent();
+        pool.Return(buf);
+
+        Assert.Throws<InvalidOperationException>(() => pool.Return(buf));
+    }
+
+    [Fact]
+    public void Rent_never_hands_out_the_same_buffer_to_two_owners()
+    {
+        var pool = new ChunkPool();
+        var a = pool.Rent();
+        pool.Return(a);
+
+        var b = pool.Rent();
+        var c = pool.Rent();
+
+        Assert.Same(a, b);
+        Assert.NotSame(b, c);
+    }
 ```
 
 - [ ] **Step 4: Прогнать**
