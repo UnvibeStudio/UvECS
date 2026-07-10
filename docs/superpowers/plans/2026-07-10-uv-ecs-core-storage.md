@@ -24,7 +24,8 @@
 - `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` в `UvEcs.csproj` (нужен для `fixed` в чанке).
 - **Рефлексии в рантайме нет.** `Unsafe.SizeOf<T>()` и `RuntimeHelpers.IsReferenceOrContainsReferences<T>()` — интринсики JIT, не рефлексия, разрешены. В тестах рефлексия допустима.
 - **Все компоненты `unmanaged`.** Managed-компонентов не существует (§4 спеки: `IManaged` отвергнут).
-- **Слово `ulong` не пишется нигде, кроме внутренностей `TagMask`.** Включая `TagType<T>.Bit`, который возвращает `TagMask`.
+- **Маска тегов никогда не выражается как `ulong` вне `TagMask`.** `TagType<T>.Bit` возвращает `TagMask`; ни чанк, ни query, ни системы не видят `ulong`. (Внутри `ComponentMask` `ulong` использовать можно — это другая маска, и переносить её на 512 бит меняет `Words`, а не тип.)
+- **Новая строка чанка обнуляется.** Буферы переиспользуются из пула, `AllocateUninitializedArray` их не чистит, поэтому `AddRow` обязан затирать свою строку во всех колонках. Иначе сущность наследует данные покойника, а тесты зеленеют случайно — свежие страницы ОС отдаёт нулевыми.
 - Ядро не ссылается ни на GodotSharp, ни на сетевые библиотеки.
 - Размер чанка: ровно `16384` байта данных. Буфер аллоцируется как `16384 + 64` для сдвига до границы 64.
 - Максимум компонентов: `256` (`ComponentMask.Capacity`). Максимум тегов: `64`.
@@ -1543,7 +1544,31 @@ public class ChunkTests
         Assert.Equal(1, c.GetRead<Position>()[0].X);
         Assert.Equal(6, c.GetRead<Position>()[1].Z);
         Assert.Equal(9, c.GetRead<Velocity>()[1].X);
-        Assert.Equal(0, c.GetRead<Velocity>()[0].X);   // AddRow не обязан обнулять, но буфер свежий
+        Assert.Equal(0, c.GetRead<Velocity>()[0].X);   // AddRow обнулил строку
+    }
+
+    [Fact]
+    public void AddRow_zeroes_the_row_even_when_the_buffer_was_reused()
+    {
+        // Пул отдаёт буфер с данными предыдущего чанка. Без затирания строки
+        // сущность унаследовала бы значения покойника, а на свежем буфере
+        // тест зеленел бы случайно — ОС отдаёт новые страницы нулевыми.
+        var pool = new ChunkPool();
+        var layout = ChunkLayout.Create(new[] { ComponentType<Position>.Id });
+
+        var buffer = pool.Rent();
+        var first = new Chunk(layout, buffer);
+        first.AddRow(new Entity(1, 1));
+        first.GetWrite<Position>()[0] = new Position { X = 1234.5f, Y = 1, Z = 2 };
+        first.SwapRemove(0);
+        pool.Return(buffer);
+
+        var second = new Chunk(layout, pool.Rent());   // тот же буфер
+        second.AddRow(new Entity(2, 1));
+
+        Assert.Equal(0, second.GetRead<Position>()[0].X);
+        Assert.Equal(0, second.GetRead<Position>()[0].Y);
+        Assert.Equal(0, second.GetRead<Position>()[0].Z);
     }
 
     [Fact]
@@ -1708,12 +1733,26 @@ public sealed unsafe class Chunk
         return ref Unsafe.AsRef<T>((void*)(_data + Layout.ColumnOffsets[ColumnOrThrow<T>()] + row * Unsafe.SizeOf<T>()));
     }
 
+    /// <summary>
+    /// Обнуляет строку во всех колонках. Буферы переиспользуются из пула, а
+    /// AllocateUninitializedArray их не чистит — без затирания сущность унаследовала бы
+    /// данные покойника, лежавшего на этой строке.
+    /// </summary>
     public int AddRow(Entity e)
     {
         if (IsFull) throw new InvalidOperationException("Чанк заполнен.");
         int row = Count++;
+
         EntityAt(row) = e;
         TagAt(row) = TagMask.Empty;
+
+        for (int c = 0; c < Layout.ComponentIds.Length; c++)
+        {
+            int size = ComponentRegistry.SizeOf(Layout.ComponentIds[c]);
+            byte* col = (byte*)(_data + Layout.ColumnOffsets[c]);
+            new Span<byte>(col + (long)row * size, size).Clear();
+        }
+
         return row;
     }
 
@@ -1774,13 +1813,13 @@ public sealed unsafe class Chunk
 - [ ] **Step 4: Прогнать**
 
 Run: `dotnet test --filter ChunkTests`
-Expected: PASS, 11 тестов.
+Expected: PASS, 12 тестов.
 
 - [ ] **Step 5: Коммит**
 
 ```bash
 git add -A
-git commit -m "feat: Chunk — SoA-колонки, swap-remove, перенос строки между архетипами"
+git commit -m "feat: Chunk — SoA-колонки, swap-remove, перенос строки, обнуление новой строки"
 ```
 
 ---
