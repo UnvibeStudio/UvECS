@@ -1,0 +1,11 @@
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/bin/Debug/net8.0/UvEcs.Abstractions.deps.json
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/bin/Debug/net8.0/UvEcs.Abstractions.dll
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/bin/Debug/net8.0/UvEcs.Abstractions.pdb
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.GeneratedMSBuildEditorConfig.editorconfig
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.AssemblyInfoInputs.cache
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.AssemblyInfo.cs
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.csproj.CoreCompileInputs.cache
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.dll
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/refint/UvEcs.Abstractions.dll
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/UvEcs.Abstractions.pdb
+/home/dev/projects/uv-ecs/src/UvEcs.Abstractions/obj/Debug/net8.0/ref/UvEcs.Abstractions.dll

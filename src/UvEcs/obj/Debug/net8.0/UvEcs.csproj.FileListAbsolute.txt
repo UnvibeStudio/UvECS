@@ -1,0 +1,15 @@
+/home/dev/projects/uv-ecs/src/UvEcs/bin/Debug/net8.0/UvEcs.deps.json
+/home/dev/projects/uv-ecs/src/UvEcs/bin/Debug/net8.0/UvEcs.dll
+/home/dev/projects/uv-ecs/src/UvEcs/bin/Debug/net8.0/UvEcs.pdb
+/home/dev/projects/uv-ecs/src/UvEcs/bin/Debug/net8.0/UvEcs.Abstractions.dll
+/home/dev/projects/uv-ecs/src/UvEcs/bin/Debug/net8.0/UvEcs.Abstractions.pdb
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.csproj.AssemblyReference.cache
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.GeneratedMSBuildEditorConfig.editorconfig
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.AssemblyInfoInputs.cache
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.AssemblyInfo.cs
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.csproj.CoreCompileInputs.cache
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.csproj.Up2Date
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.dll
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/refint/UvEcs.dll
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/UvEcs.pdb
+/home/dev/projects/uv-ecs/src/UvEcs/obj/Debug/net8.0/ref/UvEcs.dll
