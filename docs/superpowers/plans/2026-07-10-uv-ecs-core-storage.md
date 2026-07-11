@@ -4382,6 +4382,36 @@ public static class WorldInvariants
         Assert.Equal(w.EntityCount, totalRows);
     }
 
+    /// <summary>
+    /// Инвариант 3 по-чанково, а не только в сумме. Агрегатная проверка
+    /// (EntityCount == totalRows выше) пропускает компенсирующие ошибки:
+    /// +1 в одном чанке и -1 в другом дают ту же сумму. Источник истины здесь —
+    /// таблица записей (через список живых), а не сам chunk.Count: иначе проверка
+    /// выродилась бы в Assert.Equal(Count, Count), потому что forward-scan
+    /// ограничен Count. Заодно ловит утёкшую сущность (в чанке, но не в alive)
+    /// по-чанково.
+    /// </summary>
+    public static void CheckChunkCounts(World w, IReadOnlyList<Entity> alive)
+    {
+        var expected = new Dictionary<(int arch, int chunk), int>();
+        foreach (var e in alive)
+        {
+            ref var rec = ref w.Entities.GetRecord(e);
+            var key = (rec.ArchetypeId, rec.ChunkIndex);
+            expected[key] = expected.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        for (int a = 0; a < w.ArchetypeCount; a++)
+        {
+            var archetype = w.ArchetypeById(a);
+            for (int c = 0; c < archetype.Chunks.Count; c++)
+            {
+                int exp = expected.TryGetValue((a, c), out var n) ? n : 0;
+                Assert.Equal(exp, archetype.Chunks[c].Count);
+            }
+        }
+    }
+
     public static void CheckSparse<T>(World w) where T : unmanaged, ISparse
     {
         var set = w.SparseSetOf<T>();
@@ -4421,7 +4451,7 @@ public class FuzzInvariantTests
 
         for (int step = 0; step < 3000; step++)
         {
-            switch (rng.Next(9))
+            switch (rng.Next(10))
             {
                 case 0:
                     alive.Add(w.Create());
@@ -4477,17 +4507,31 @@ public class FuzzInvariantTests
                     else w.AddSparse(e, new GuildBuff { Id = e.Id });
                     break;
                 }
+
+                case 9 when alive.Count > 0:
+                {
+                    // Второй sparse-носитель: без него QuestFlag-путь мёртв,
+                    // а RemoveSparse<QuestFlag> в destroy — вечный no-op.
+                    var e = alive[rng.Next(alive.Count)];
+                    if (w.HasSparse<QuestFlag>(e)) w.RemoveSparse<QuestFlag>(e);
+                    else w.AddSparse(e, new QuestFlag { Id = e.Id });
+                    break;
+                }
             }
 
             if (step % 50 == 0)
             {
                 WorldInvariants.Check(w);
+                WorldInvariants.CheckChunkCounts(w, alive);
                 WorldInvariants.CheckSparse<GuildBuff>(w);
+                WorldInvariants.CheckSparse<QuestFlag>(w);
             }
         }
 
         WorldInvariants.Check(w);
+        WorldInvariants.CheckChunkCounts(w, alive);
         WorldInvariants.CheckSparse<GuildBuff>(w);
+        WorldInvariants.CheckSparse<QuestFlag>(w);
         Assert.Equal(alive.Count, w.EntityCount);
 
         static void AddIfMissing<T>(World w, Entity e) where T : unmanaged, IComponent
