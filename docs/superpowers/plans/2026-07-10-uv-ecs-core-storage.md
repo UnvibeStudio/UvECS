@@ -4766,23 +4766,48 @@ public static class Program
                 for (int i = 0; i < N; i++) w.Add(entities[i], new Velocity());
                 for (int i = 0; i < N; i++) w.Remove<Velocity>(entities[i]);
             }));
+
+        // Санити вне тайминга: тело заканчивается Remove, значит Velocity снят у всех,
+        // а Position остался. Иначе записанное число мерило бы не миграцию, а no-op.
+        int withPosition = 0, withVelocity = 0;
+        for (int i = 0; i < N; i++)
+        {
+            if (w.Has<Position>(entities[i])) withPosition++;
+            if (w.Has<Velocity>(entities[i])) withVelocity++;
+        }
+        if (withPosition != N || withVelocity != 0)
+            throw new Exception($"миграция ничего не сделала: Position={withPosition}/{N}, Velocity={withVelocity} (ждали 0)");
+        Console.WriteLine($"  (санити: Position у всех {N}, Velocity снят у всех — работа подтверждена)");
     }
 
     private static void BenchCreateDestroy()
     {
         var buffer = new Entity[N];
 
-        Harness.Compare("create/destroy 10k сущностей с Position", iterations: 200,
-            ("create+destroy", () =>
+        void Body()
+        {
+            var w = new World();
+            for (int i = 0; i < N; i++)
             {
-                var w = new World();
-                for (int i = 0; i < N; i++)
-                {
-                    buffer[i] = w.Create();
-                    w.Add(buffer[i], new Position());
-                }
-                for (int i = 0; i < N; i++) w.Destroy(buffer[i]);
-            }));
+                buffer[i] = w.Create();
+                w.Add(buffer[i], new Position());
+            }
+            for (int i = 0; i < N; i++) w.Destroy(buffer[i]);
+        }
+
+        // Санити вне тайминга: отдельный прогон проверяет, что create даёт N, а destroy — 0.
+        {
+            var probe = new World();
+            for (int i = 0; i < N; i++) { buffer[i] = probe.Create(); probe.Add(buffer[i], new Position()); }
+            if (probe.EntityCount != N)
+                throw new Exception($"create ничего не сделал: EntityCount={probe.EntityCount}, ждали {N}");
+            for (int i = 0; i < N; i++) probe.Destroy(buffer[i]);
+            if (probe.EntityCount != 0)
+                throw new Exception($"destroy ничего не сделал: EntityCount={probe.EntityCount}, ждали 0");
+            Console.WriteLine($"  (санити: create дал {N}, destroy обнулил — работа подтверждена)");
+        }
+
+        Harness.Compare("create/destroy 10k сущностей с Position", iterations: 200, ("create+destroy", Body));
     }
 }
 ```
