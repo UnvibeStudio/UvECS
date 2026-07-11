@@ -198,7 +198,10 @@ public class QueryTests
             }
         });
     }
+#endif
 
+    // Не под #if DEBUG: смена тега посреди foreach допустима в любой конфигурации —
+    // теги не структурны и guard их не трогает. Тест ценен и в Release.
     [Fact]
     public void Non_structural_change_during_foreach_is_allowed()
     {
@@ -212,5 +215,4 @@ public class QueryTests
 
         Assert.True(w.HasTag<Stunned>(a));
     }
-#endif
 }
