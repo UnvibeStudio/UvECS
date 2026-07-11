@@ -13,6 +13,15 @@ public class QueryTests
         return n;
     }
 
+    private static List<Entity> PassingEntities(Query q)
+    {
+        var seen = new List<Entity>();
+        foreach (var chunk in q)
+            for (int i = 0; i < chunk.Count; i++)
+                if (chunk.Passes(i)) seen.Add(chunk.Entities[i]);
+        return seen;
+    }
+
     [Fact]
     public void Query_matches_archetypes_containing_all_components()
     {
@@ -101,26 +110,35 @@ public class QueryTests
         Assert.Equal(0, chunks);
     }
 
+    // Симметричная популяция (1 с тегом, 1 без) + проверка count==1 НЕ отличила бы
+    // WithTag от WithoutTag: перепутай TagAll и TagNone, и прошёл бы не тот объект,
+    // но счётчик остался бы единицей. Поэтому проверяем ИДЕНТИЧНОСТЬ прошедшего.
     [Fact]
-    public void WithTag_filters_rows()
+    public void WithTag_passes_only_the_tagged_entity()
     {
         var w = new World();
-        var a = w.Create(); w.Add(a, new Position()); w.SetTag<Stunned>(a);
-        var b = w.Create(); w.Add(b, new Position());
+        var tagged = w.Create(); w.Add(tagged, new Position()); w.SetTag<Stunned>(tagged);
+        var plain = w.Create(); w.Add(plain, new Position());
 
         var q = w.Query().All<Position>().WithTag<Stunned>().Build();
-        Assert.Equal(1, CountEntities(q));
+        var seen = PassingEntities(q);
+
+        Assert.Single(seen);
+        Assert.Equal(tagged, seen[0]);        // именно с тегом, не plain
     }
 
     [Fact]
-    public void WithoutTag_filters_rows()
+    public void WithoutTag_passes_only_the_untagged_entity()
     {
         var w = new World();
-        var a = w.Create(); w.Add(a, new Position()); w.SetTag<Dead>(a);
-        var b = w.Create(); w.Add(b, new Position());
+        var tagged = w.Create(); w.Add(tagged, new Position()); w.SetTag<Dead>(tagged);
+        var plain = w.Create(); w.Add(plain, new Position());
 
         var q = w.Query().All<Position>().WithoutTag<Dead>().Build();
-        Assert.Equal(1, CountEntities(q));
+        var seen = PassingEntities(q);
+
+        Assert.Single(seen);
+        Assert.Equal(plain, seen[0]);         // именно без тега, не tagged
     }
 
     [Fact]
