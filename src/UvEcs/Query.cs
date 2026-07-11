@@ -44,6 +44,13 @@ public sealed class Query
 
     internal List<Archetype> MatchedArchetypes { get { Refresh(); return _matched; } }
     internal World World => _world;
+
+    public SparseEnumerable BySparse()
+    {
+        if (SparseAll.Length == 0)
+            throw new InvalidOperationException("BySparse() требует хотя бы одного AllSparse<T>().");
+        return new SparseEnumerable(this);
+    }
 }
 
 public struct ChunkEnumerator
@@ -90,4 +97,104 @@ public struct ChunkEnumerator
         }
         return false;
     }
+}
+
+public readonly struct SparseHit
+{
+    public readonly Entity Entity;
+    public readonly Chunk Chunk;
+    public readonly int Row;
+
+    internal SparseHit(Entity entity, Chunk chunk, int row)
+    {
+        Entity = entity;
+        Chunk = chunk;
+        Row = row;
+    }
+}
+
+public readonly struct SparseEnumerable
+{
+    private readonly Query _query;
+    internal SparseEnumerable(Query query) => _query = query;
+    public SparseEnumerator GetEnumerator() => new(_query);
+}
+
+public struct SparseEnumerator
+{
+    private readonly Query _query;
+    private readonly ISparseSetView _driver;
+    private readonly int[] _otherSparse;
+    private int _index;
+    private SparseHit _current;
+
+    internal SparseEnumerator(Query query)
+    {
+        _query = query;
+        _index = -1;
+        _current = default;
+
+        // Драйвер — наименьший из обязательных наборов (§6 спеки).
+        // Отсутствующий набор означает ноль носителей, то есть пустой результат.
+        int driverId = -1;
+        int driverCount = int.MaxValue;
+
+        foreach (int id in query.SparseAll)
+        {
+            int count = query.World.SparseSetById(id)?.Count ?? 0;
+            if (count < driverCount)
+            {
+                driverCount = count;
+                driverId = id;
+            }
+        }
+
+        _driver = query.World.SparseSetById(driverId) ?? EmptySparseSetView.Instance;
+        _otherSparse = query.SparseAll.Where(id => id != driverId).ToArray();
+    }
+
+    public SparseHit Current => _current;
+
+    public bool MoveNext()
+    {
+        var world = _query.World;
+        var entities = _driver.Entities;
+
+        while (++_index < entities.Length)
+        {
+            int entityId = entities[_index];
+
+            ref var rec = ref world.Entities.RecordRefUnchecked(entityId);
+            if (rec.ArchetypeId < 0) continue;                     // сущность мертва
+
+            var archetype = world.ArchetypeById(rec.ArchetypeId);
+            if (!archetype.Mask.HasAll(in _query.All)) continue;
+            if (!archetype.Mask.HasNone(in _query.None)) continue;
+
+            bool hasAllSparse = true;
+            for (int i = 0; i < _otherSparse.Length; i++)
+            {
+                var other = world.SparseSetById(_otherSparse[i]);
+                if (other is null || !other.Has(entityId)) { hasAllSparse = false; break; }
+            }
+            if (!hasAllSparse) continue;
+
+            var chunk = archetype.Chunks[rec.ChunkIndex];
+            var tags = chunk.TagAt(rec.Row);
+            if (!tags.HasAll(_query.TagAll) || !tags.HasNone(_query.TagNone)) continue;
+
+            _current = new SparseHit(chunk.EntityAt(rec.Row), chunk, rec.Row);
+            return true;
+        }
+        return false;
+    }
+}
+
+internal sealed class EmptySparseSetView : ISparseSetView
+{
+    public static readonly EmptySparseSetView Instance = new();
+    public int Count => 0;
+    public ReadOnlySpan<int> Entities => ReadOnlySpan<int>.Empty;
+    public bool Has(int entityId) => false;
+    public bool Remove(int entityId) => false;
 }

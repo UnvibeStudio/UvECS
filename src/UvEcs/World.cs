@@ -58,6 +58,7 @@ public sealed partial class World
     {
         ref var rec = ref Entities.GetRecord(e);
         RemoveFromChunk(rec.ArchetypeId, rec.ChunkIndex, rec.Row);
+        RemoveFromAllSparseSets(e.Id);   // иначе sparse переживёт сущность и достанется её преемнику
         Entities.Destroy(e);
     }
 

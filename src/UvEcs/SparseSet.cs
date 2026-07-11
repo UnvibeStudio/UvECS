@@ -1,11 +1,23 @@
 namespace UvEcs;
 
 /// <summary>
+/// Необобщённое окно в sparse-набор. Нужно в двух местах, где T неизвестен:
+/// выбор драйвера итерации и очистка наборов при удалении сущности.
+/// </summary>
+public interface ISparseSetView
+{
+    int Count { get; }
+    ReadOnlySpan<int> Entities { get; }
+    bool Has(int entityId);
+    bool Remove(int entityId);
+}
+
+/// <summary>
 /// Редкий компонент с данными. Индексируется по entityId, поэтому миграция
 /// архетипа его не трогает: обновлять нечего (§5 спеки).
 /// Окупается, пока носителей меньше ~25% кандидатов запроса (§6 спеки).
 /// </summary>
-public sealed class SparseSet<T> where T : unmanaged, ISparse
+public sealed class SparseSet<T> : ISparseSetView where T : unmanaged, ISparse
 {
     private const int Absent = -1;
 
