@@ -46,6 +46,35 @@ public static class WorldInvariants
         Assert.Equal(w.EntityCount, totalRows);
     }
 
+    /// <summary>
+    /// Инвариант 3 по-чанково, а не только в сумме. Агрегатная проверка
+    /// (EntityCount == totalRows) пропускает компенсирующие ошибки:
+    /// +1 в одном чанке и -1 в другом дают ту же сумму. Источник истины здесь —
+    /// таблица записей (через список живых), а не сам chunk.Count: иначе проверка
+    /// выродилась бы в Assert.Equal(Count, Count), потому что forward-scan
+    /// ограничен Count. Заодно ловит утёкшую сущность (в чанке, но не в alive).
+    /// </summary>
+    public static void CheckChunkCounts(World w, IReadOnlyList<Entity> alive)
+    {
+        var expected = new Dictionary<(int arch, int chunk), int>();
+        foreach (var e in alive)
+        {
+            ref var rec = ref w.Entities.GetRecord(e);
+            var key = (rec.ArchetypeId, rec.ChunkIndex);
+            expected[key] = expected.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        for (int a = 0; a < w.ArchetypeCount; a++)
+        {
+            var archetype = w.ArchetypeById(a);
+            for (int c = 0; c < archetype.Chunks.Count; c++)
+            {
+                int exp = expected.TryGetValue((a, c), out var n) ? n : 0;
+                Assert.Equal(exp, archetype.Chunks[c].Count);
+            }
+        }
+    }
+
     public static void CheckSparse<T>(World w) where T : unmanaged, ISparse
     {
         var set = w.SparseSetOf<T>();

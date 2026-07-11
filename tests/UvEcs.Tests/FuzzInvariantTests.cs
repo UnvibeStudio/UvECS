@@ -17,7 +17,7 @@ public class FuzzInvariantTests
 
         for (int step = 0; step < 3000; step++)
         {
-            switch (rng.Next(9))
+            switch (rng.Next(10))
             {
                 case 0:
                     alive.Add(w.Create());
@@ -73,17 +73,31 @@ public class FuzzInvariantTests
                     else w.AddSparse(e, new GuildBuff { Id = e.Id });
                     break;
                 }
+
+                case 9 when alive.Count > 0:
+                {
+                    // Второй sparse-носитель: без него QuestFlag-путь мёртв,
+                    // а RemoveSparse<QuestFlag> в destroy — вечный no-op.
+                    var e = alive[rng.Next(alive.Count)];
+                    if (w.HasSparse<QuestFlag>(e)) w.RemoveSparse<QuestFlag>(e);
+                    else w.AddSparse(e, new QuestFlag { Id = e.Id });
+                    break;
+                }
             }
 
             if (step % 50 == 0)
             {
                 WorldInvariants.Check(w);
+                WorldInvariants.CheckChunkCounts(w, alive);
                 WorldInvariants.CheckSparse<GuildBuff>(w);
+                WorldInvariants.CheckSparse<QuestFlag>(w);
             }
         }
 
         WorldInvariants.Check(w);
+        WorldInvariants.CheckChunkCounts(w, alive);
         WorldInvariants.CheckSparse<GuildBuff>(w);
+        WorldInvariants.CheckSparse<QuestFlag>(w);
         Assert.Equal(alive.Count, w.EntityCount);
 
         static void AddIfMissing<T>(World w, Entity e) where T : unmanaged, IComponent
@@ -116,5 +130,23 @@ public class FuzzInvariantTests
             for (int row = 0; row < chunk.Count; row++) exact = exact.Or(chunk.TagAt(row));
             Assert.Equal(exact, chunk.TagUnion);   // после пересчёта union точна, а не консервативна
         }
+    }
+
+    [Fact]
+    public void CheckChunkCounts_fires_when_the_record_side_disagrees_with_chunk_count()
+    {
+        // Доказывает, что проверка НЕ вырожденная: чанк держит 3 сущности,
+        // но список «живых» учитывает только 2 -> ожидание по записям (2)
+        // расходится с chunk.Count (3), и CheckChunkCounts обязан упасть.
+        var w = new World();
+        var a = w.Create();
+        var b = w.Create();
+        var c = w.Create();
+
+        Assert.ThrowsAny<Exception>(() =>
+            WorldInvariants.CheckChunkCounts(w, new List<Entity> { a, b }));   // неполный список
+
+        // Полный список проходит.
+        WorldInvariants.CheckChunkCounts(w, new List<Entity> { a, b, c });
     }
 }
