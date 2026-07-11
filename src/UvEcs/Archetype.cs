@@ -10,6 +10,13 @@ public sealed class Archetype
     private readonly Dictionary<int, Archetype> _addEdges = new();
     private readonly Dictionary<int, Archetype> _removeEdges = new();
 
+    // Кеш индекса чанка со свободным местом. -1 — искать заново.
+    // Вставки идут аппендом в один и тот же чанк, пока он не заполнится, поэтому
+    // почти всегда это O(1)-попадание. Без кеша GetOrCreateChunkWithSpace сканировал
+    // список чанков от нуля на КАЖДУЮ вставку: O(числа чанков) на сущность, что и было
+    // главной ценой create/миграции на растущем архетипе.
+    private int _chunkWithSpace = -1;
+
     public int Id { get; }
     public ComponentMask Mask { get; }
     public ChunkLayout Layout { get; }
@@ -37,18 +44,25 @@ public sealed class Archetype
 
     public Chunk GetOrCreateChunkWithSpace(ChunkPool pool, out int chunkIndex)
     {
+        // Быстрый путь: кешированный чанк ещё существует и не полон.
+        if ((uint)_chunkWithSpace < (uint)_chunks.Count && !_chunks[_chunkWithSpace].IsFull)
+        {
+            chunkIndex = _chunkWithSpace;
+            return _chunks[_chunkWithSpace];
+        }
+
         for (int i = 0; i < _chunks.Count; i++)
         {
             if (!_chunks[i].IsFull)
             {
-                chunkIndex = i;
+                chunkIndex = _chunkWithSpace = i;
                 return _chunks[i];
             }
         }
 
         var chunk = new Chunk(Layout, pool.Rent());
         _chunks.Add(chunk);
-        chunkIndex = _chunks.Count - 1;
+        chunkIndex = _chunkWithSpace = _chunks.Count - 1;
         return chunk;
     }
 
@@ -69,6 +83,7 @@ public sealed class Archetype
         if (chunkIndex != _chunks.Count - 1) return;
 
         _chunks.RemoveAt(chunkIndex);
+        _chunkWithSpace = -1;   // индексы могли сдвинуться — пусть перескан найдёт заново
         chunk.Reset();
         pool.Return(chunk.Buffer);
     }
