@@ -86,29 +86,48 @@ public static class Program
     {
         var buffer = new Entity[N];
 
-        void Body()
+        void CreateOnly()
         {
             var w = new World();
-            for (int i = 0; i < N; i++)
-            {
-                buffer[i] = w.Create();
-                w.Add(buffer[i], new Position());
-            }
+            for (int i = 0; i < N; i++) buffer[i] = w.Create(new Position());
+        }
+
+        void CreateThenDestroy()
+        {
+            var w = new World();
+            for (int i = 0; i < N; i++) buffer[i] = w.Create(new Position());
             for (int i = 0; i < N; i++) w.Destroy(buffer[i]);
         }
 
-        // Санити вне тайминга: отдельный прогон проверяет, что create даёт N, а destroy — 0.
+        void CreateManyThenDestroy()
+        {
+            var w = new World();
+            w.CreateMany<Position>(N, buffer);
+            for (int i = 0; i < N; i++) w.Destroy(buffer[i]);
+        }
+
+        // Санити вне тайминга: create даёт N, destroy — 0, CreateMany тоже даёт N.
         {
             var probe = new World();
-            for (int i = 0; i < N; i++) { buffer[i] = probe.Create(); probe.Add(buffer[i], new Position()); }
+            for (int i = 0; i < N; i++) buffer[i] = probe.Create(new Position());
             if (probe.EntityCount != N)
                 throw new Exception($"create ничего не сделал: EntityCount={probe.EntityCount}, ждали {N}");
             for (int i = 0; i < N; i++) probe.Destroy(buffer[i]);
             if (probe.EntityCount != 0)
                 throw new Exception($"destroy ничего не сделал: EntityCount={probe.EntityCount}, ждали 0");
-            Console.WriteLine($"  (санити: create дал {N}, destroy обнулил — работа подтверждена)");
+
+            var probeMany = new World();
+            probeMany.CreateMany<Position>(N, buffer);
+            if (probeMany.EntityCount != N)
+                throw new Exception($"CreateMany ничего не сделал: EntityCount={probeMany.EntityCount}, ждали {N}");
+            Console.WriteLine($"  (санити: create дал {N}, destroy обнулил, CreateMany дал {N} — работа подтверждена)");
         }
 
-        Harness.Compare("create/destroy 10k сущностей с Position", iterations: 200, ("create+destroy", Body));
+        // Базовый вариант — «только create»: отношения показывают вклад destroy.
+        Harness.Compare("create/destroy 10k с Position", iterations: 200,
+            ("create<Position> only",      CreateOnly),
+            ("create<Position> + destroy", CreateThenDestroy),
+            ("createMany + destroy",       CreateManyThenDestroy));
+        Console.WriteLine("  (destroy ≈ разница «create+destroy» − «create only»; CreateMany — вклад батч-спавна)");
     }
 }
