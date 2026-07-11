@@ -17,7 +17,7 @@ public class FuzzInvariantTests
 
         for (int step = 0; step < 3000; step++)
         {
-            switch (rng.Next(10))
+            switch (rng.Next(12))
             {
                 case 0:
                     alive.Add(w.Create());
@@ -81,6 +81,21 @@ public class FuzzInvariantTests
                     var e = alive[rng.Next(alive.Count)];
                     if (w.HasSparse<QuestFlag>(e)) w.RemoveSparse<QuestFlag>(e);
                     else w.AddSparse(e, new QuestFlag { Id = e.Id });
+                    break;
+                }
+
+                case 10:
+                    // Прямое создание в финальном архетипе {Position,Velocity}.
+                    alive.Add(w.Create(new Position { X = step }, new Velocity()));
+                    break;
+
+                case 11:
+                {
+                    // Батч-спавн: k сущностей одного архетипа за раз.
+                    int k = 1 + rng.Next(4);
+                    Span<Entity> buf = stackalloc Entity[k];
+                    w.CreateMany<Health>(k, buf);
+                    for (int j = 0; j < k; j++) alive.Add(buf[j]);
                     break;
                 }
             }
