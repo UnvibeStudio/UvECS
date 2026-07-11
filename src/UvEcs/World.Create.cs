@@ -45,4 +45,64 @@ public sealed partial class World
         to.BumpStructuralVersion();
         return e;
     }
+
+    public Entity Create<T1, T2>(in T1 c1, in T2 c2)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        AssertDistinct(2, in mask);
+
+        var to = GetOrCreateArchetype(in mask);
+        var chunk = PlaceNew(to, out var e, out int row);
+        chunk.GetRef<T1>(row) = c1;
+        chunk.GetRef<T2>(row) = c2;
+        to.BumpStructuralVersion();
+        return e;
+    }
+
+    public Entity Create<T1, T2, T3>(in T1 c1, in T2 c2, in T3 c3)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        mask.Set(ComponentType<T3>.Id);
+        AssertDistinct(3, in mask);
+
+        var to = GetOrCreateArchetype(in mask);
+        var chunk = PlaceNew(to, out var e, out int row);
+        chunk.GetRef<T1>(row) = c1;
+        chunk.GetRef<T2>(row) = c2;
+        chunk.GetRef<T3>(row) = c3;
+        to.BumpStructuralVersion();
+        return e;
+    }
+
+    public Entity Create<T1, T2, T3, T4>(in T1 c1, in T2 c2, in T3 c3, in T4 c4)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
+        where T4 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        mask.Set(ComponentType<T3>.Id);
+        mask.Set(ComponentType<T4>.Id);
+        AssertDistinct(4, in mask);
+
+        var to = GetOrCreateArchetype(in mask);
+        var chunk = PlaceNew(to, out var e, out int row);
+        chunk.GetRef<T1>(row) = c1;
+        chunk.GetRef<T2>(row) = c2;
+        chunk.GetRef<T3>(row) = c3;
+        chunk.GetRef<T4>(row) = c4;
+        to.BumpStructuralVersion();
+        return e;
+    }
 }
