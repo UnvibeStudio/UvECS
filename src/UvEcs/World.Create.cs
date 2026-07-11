@@ -105,4 +105,65 @@ public sealed partial class World
         to.BumpStructuralVersion();
         return e;
     }
+
+    private void CreateManyInto(int count, Span<Entity> dest, in ComponentMask mask, int arity)
+    {
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        if (dest.Length < count) throw new ArgumentException("dest короче count.", nameof(dest));
+        AssertDistinct(arity, in mask);
+        if (count == 0) return;
+
+        var to = GetOrCreateArchetype(in mask);
+        to.Reserve(Pool, count);
+        for (int i = 0; i < count; i++)
+        {
+            PlaceNew(to, out var e, out _);
+            dest[i] = e;
+        }
+        to.BumpStructuralVersion();
+    }
+
+    public void CreateMany<T1>(int count, Span<Entity> dest)
+        where T1 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        CreateManyInto(count, dest, in mask, 1);
+    }
+
+    public void CreateMany<T1, T2>(int count, Span<Entity> dest)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        CreateManyInto(count, dest, in mask, 2);
+    }
+
+    public void CreateMany<T1, T2, T3>(int count, Span<Entity> dest)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        mask.Set(ComponentType<T3>.Id);
+        CreateManyInto(count, dest, in mask, 3);
+    }
+
+    public void CreateMany<T1, T2, T3, T4>(int count, Span<Entity> dest)
+        where T1 : unmanaged, IComponent
+        where T2 : unmanaged, IComponent
+        where T3 : unmanaged, IComponent
+        where T4 : unmanaged, IComponent
+    {
+        var mask = new ComponentMask();
+        mask.Set(ComponentType<T1>.Id);
+        mask.Set(ComponentType<T2>.Id);
+        mask.Set(ComponentType<T3>.Id);
+        mask.Set(ComponentType<T4>.Id);
+        CreateManyInto(count, dest, in mask, 4);
+    }
 }
