@@ -141,4 +141,41 @@ public class ArchetypeTests
         a.BumpStructuralVersion();
         Assert.NotEqual(before, a.StructuralVersion);
     }
+
+    [Fact]
+    public void Reserve_pre_allocates_capacity_for_count_rows()
+    {
+        var pool = new ChunkPool();
+        var a = PosVel();
+
+        a.Reserve(pool, 1000);
+
+        int capacity = 0;
+        foreach (var ch in a.Chunks) capacity += ch.Capacity;
+        Assert.True(capacity >= 1000, $"ждали ёмкость >= 1000, получили {capacity}");
+    }
+
+    [Fact]
+    public void Reserve_counts_existing_free_space_and_does_not_over_allocate()
+    {
+        var pool = new ChunkPool();
+        var a = PosVel();
+
+        a.Reserve(pool, 100);
+        int chunksAfterFirst = a.Chunks.Count;
+
+        // Второй резерв в пределах уже свободного места не должен добавлять чанки.
+        a.Reserve(pool, 100);
+        Assert.Equal(chunksAfterFirst, a.Chunks.Count);
+    }
+
+    [Fact]
+    public void Reserve_with_non_positive_count_does_nothing()
+    {
+        var pool = new ChunkPool();
+        var a = PosVel();
+        a.Reserve(pool, 0);
+        a.Reserve(pool, -5);
+        Assert.Empty(a.Chunks);
+    }
 }

@@ -67,6 +67,29 @@ public sealed class Archetype
     }
 
     /// <summary>
+    /// Пред-выделяет чанки, чтобы вместить ещё <paramref name="count"/> строк поверх уже
+    /// занятого места. Батч-создание зовёт это один раз, чтобы цикл заполнения не чередовал
+    /// вставку с арендой чанков. Свободное место в существующих не-полных чанках учитывается —
+    /// лишнего не аллоцируем. Кеш _chunkWithSpace не трогаем: его подхватит GetOrCreateChunkWithSpace.
+    /// </summary>
+    public void Reserve(ChunkPool pool, int count)
+    {
+        if (count <= 0) return;
+
+        int free = 0;
+        for (int i = 0; i < _chunks.Count; i++)
+            free += _chunks[i].Capacity - _chunks[i].Count;
+
+        int need = count - free;
+        if (need <= 0) return;
+
+        int perChunk = Layout.Capacity;
+        int newChunks = (need + perChunk - 1) / perChunk;
+        for (int i = 0; i < newChunks; i++)
+            _chunks.Add(new Chunk(Layout, pool.Rent()));
+    }
+
+    /// <summary>
     /// Гистерезис: один пустой чанк остаётся про запас. Иначе сущность, прыгающая
     /// через границу чанка, устраивает пинг-понг аренды на каждой операции.
     /// </summary>
