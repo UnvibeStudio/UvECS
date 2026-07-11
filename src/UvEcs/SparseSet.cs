@@ -79,6 +79,10 @@ public sealed class SparseSet<T> : ISparseSetView where T : unmanaged, ISparse
         return ref _values[_sparse[entityId]];
     }
 
+    /// <summary>Только для инвариант-проверок: настоящий round-trip dense[sparse[e]] == e.</summary>
+    internal bool DebugRoundTrips(int entityId)
+        => Has(entityId) && _dense[_sparse[entityId]] == entityId;
+
     private void EnsureSparse(int entityId)
     {
         if (entityId < _sparse.Length) return;

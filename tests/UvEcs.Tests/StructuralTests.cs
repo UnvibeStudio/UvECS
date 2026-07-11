@@ -143,13 +143,26 @@ public class StructuralTests
     public void Structural_version_bumps_on_migration()
     {
         var w = new World();
+
+        // прогреваем архетип {Position}, чтобы у него была осмысленная версия ДО миграции e
+        var warmup = w.Create();
+        w.Add(warmup, new Position());
+        var to = w.ArchetypeById(w.Entities.GetRecord(warmup).ArchetypeId);
+        int beforeTo = to.StructuralVersion;
+
         var e = w.Create();
         var empty = w.ArchetypeById(0);
-        int before = empty.StructuralVersion;
+        int beforeFrom = empty.StructuralVersion;
 
         w.Add(e, new Position());
 
-        Assert.NotEqual(before, empty.StructuralVersion);
+        Assert.NotEqual(beforeFrom, empty.StructuralVersion);
+
+        // Приёмник тоже должен бампнуться — не только источник.
+        ref var rec = ref w.Entities.GetRecord(e);
+        var actualTo = w.ArchetypeById(rec.ArchetypeId);
+        Assert.Same(to, actualTo);
+        Assert.NotEqual(beforeTo, actualTo.StructuralVersion);
     }
 
     [Fact]

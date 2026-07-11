@@ -66,6 +66,7 @@ public sealed partial class World
 
         Entity moved = fromChunk.SwapRemove(fromRow);
         if (!moved.IsNull)
+            // вытесненная swap-remove'ом сущность — не мигрирующая; у неё меняется только Row
             Entities.RecordRefUnchecked(moved.Id).Row = fromRow;
 
         from.ReleaseChunkIfEmpty(fromChunkIndex, Pool);

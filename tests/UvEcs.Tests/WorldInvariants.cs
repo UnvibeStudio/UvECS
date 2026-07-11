@@ -82,9 +82,9 @@ public static class WorldInvariants
 
         for (int i = 0; i < entities.Length; i++)
         {
-            // 5. dense[sparse[e]] == e
-            Assert.True(set.Has(entities[i]), $"висячий индекс для сущности {entities[i]}");
+            // 5. настоящий round-trip: dense[sparse[e]] == e, а не только "sparse[e] != Absent".
+            // Порча, указывающая sparse[e] на чужой dense-слот, прошла бы Has(), но не это.
+            Assert.True(set.DebugRoundTrips(entities[i]), $"sparse[{entities[i]}] указывает не на свой dense-слот");
         }
-        Assert.Equal(entities.Length, set.Count);
     }
 }

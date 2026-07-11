@@ -179,4 +179,38 @@ public class QueryTests
             Assert.Equal(e, chunk.Entities[0]);
         }
     }
+
+#if DEBUG
+    [Fact]
+    public void Structural_change_during_foreach_throws()
+    {
+        var w = new World();
+        var a = w.Create(); w.Add(a, new Position());
+        var b = w.Create(); w.Add(b, new Position());
+
+        var q = w.Query().All<Position>().Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+        {
+            foreach (var chunk in q)
+            {
+                w.Add(a, new Velocity());   // структурное изменение посреди итерации
+            }
+        });
+    }
+
+    [Fact]
+    public void Non_structural_change_during_foreach_is_allowed()
+    {
+        // Теги не структурны — менять их посреди foreach можно.
+        var w = new World();
+        var a = w.Create(); w.Add(a, new Position());
+
+        var q = w.Query().All<Position>().Build();
+        foreach (var chunk in q)
+            w.SetTag<Stunned>(a);   // не должно бросить
+
+        Assert.True(w.HasTag<Stunned>(a));
+    }
+#endif
 }

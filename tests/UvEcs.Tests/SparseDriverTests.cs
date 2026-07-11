@@ -156,7 +156,7 @@ public class SparseDriverTests
         var e = w.Create();
         w.Add(e, new Position());
         w.AddSparse(e, new GuildBuff());
-        w.Destroy(e);   // sparse-набор о смерти не знает — драйвер обязан проверять
+        w.Destroy(e);   // World.Destroy чистит sparse-наборы (RemoveFromAllSparseSets) — носитель выбывает из драйвера, поэтому итог пуст
 
         var q = w.Query().All<Position>().AllSparse<GuildBuff>().Build();
         int seen = 0;

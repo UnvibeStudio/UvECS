@@ -60,6 +60,9 @@ public struct ChunkEnumerator
     private int _archetypeIndex;
     private int _chunkIndex;
     private Chunk? _current;
+#if DEBUG
+    private readonly int _structuralSnapshot;
+#endif
 
     internal ChunkEnumerator(Query query, List<Archetype> archetypes)
     {
@@ -68,12 +71,30 @@ public struct ChunkEnumerator
         _archetypeIndex = 0;
         _chunkIndex = -1;
         _current = null;
+#if DEBUG
+        _structuralSnapshot = StructuralSum(archetypes);
+#endif
     }
+
+#if DEBUG
+    private static int StructuralSum(List<Archetype> archetypes)
+    {
+        int sum = 0;
+        for (int i = 0; i < archetypes.Count; i++) sum += archetypes[i].StructuralVersion;
+        return sum;
+    }
+#endif
 
     public ChunkView Current => new(_current!, _query.TagAll, _query.TagNone);
 
     public bool MoveNext()
     {
+#if DEBUG
+        if (StructuralSum(_archetypes) != _structuralSnapshot)
+            throw new InvalidOperationException(
+                "Структурное изменение (Add/Remove/Create/Destroy) во время foreach по запросу. " +
+                "Отложите его в command buffer (§7 спеки).");
+#endif
         while (_archetypeIndex < _archetypes.Count)
         {
             var archetype = _archetypes[_archetypeIndex];
@@ -127,6 +148,10 @@ public struct SparseEnumerator
     private readonly int[] _otherSparse;
     private int _index;
     private SparseHit _current;
+#if DEBUG
+    private readonly List<Archetype> _archetypes;
+    private readonly int _structuralSnapshot;
+#endif
 
     internal SparseEnumerator(Query query)
     {
@@ -151,12 +176,34 @@ public struct SparseEnumerator
 
         _driver = query.World.SparseSetById(driverId) ?? EmptySparseSetView.Instance;
         _otherSparse = query.SparseAll.Where(id => id != driverId).ToArray();
+#if DEBUG
+        // Симметрично ChunkEnumerator: сумма StructuralVersion по заматченным архетипам.
+        // SparseEnumerator ходит по entity-записям напрямую, а не по списку чанков,
+        // но структурная мутация посреди BySparse() так же нарушает контракт (§11 спеки).
+        _archetypes = query.MatchedArchetypes;
+        _structuralSnapshot = StructuralSum(_archetypes);
+#endif
     }
+
+#if DEBUG
+    private static int StructuralSum(List<Archetype> archetypes)
+    {
+        int sum = 0;
+        for (int i = 0; i < archetypes.Count; i++) sum += archetypes[i].StructuralVersion;
+        return sum;
+    }
+#endif
 
     public SparseHit Current => _current;
 
     public bool MoveNext()
     {
+#if DEBUG
+        if (StructuralSum(_archetypes) != _structuralSnapshot)
+            throw new InvalidOperationException(
+                "Структурное изменение (Add/Remove/Create/Destroy) во время foreach по BySparse(). " +
+                "Отложите его в command buffer (§7 спеки).");
+#endif
         var world = _query.World;
         var entities = _driver.Entities;
 

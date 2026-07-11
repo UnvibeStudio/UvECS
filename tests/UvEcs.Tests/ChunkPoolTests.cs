@@ -80,8 +80,10 @@ public class ChunkPoolTests
     }
 
     [Fact]
-    public void Rent_never_hands_out_the_same_buffer_to_two_owners()
+    public void Rent_reuses_a_returned_buffer_then_allocates_a_fresh_one()
     {
+        // Первый Rent() после Return() обязан переиспользовать буфер, а следующий —
+        // когда свободных не осталось — выделить новый, не тот же самый.
         var pool = new ChunkPool();
         var a = pool.Rent();
         pool.Return(a);
