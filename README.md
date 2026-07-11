@@ -4,7 +4,7 @@ A high-performance archetype ECS for .NET 8, built for MMO servers where most en
 
 The library optimises for execution speed over API elegance. It uses **no runtime reflection** — component identity, storage selection, and iteration are all resolved through generic constraints and JIT intrinsics. The core has no dependency on any game engine, so the server runs headless and the whole test suite executes without one.
 
-> **Status: storage core complete.** Entities, three storage backends, archetype migration, tags, sparse sets, and queries are implemented, reviewed, and covered by 147 tests plus an invariant fuzzer. Networking (delta replication), systems (command buffers, tick stages, parallelism), and client-side prediction are designed but not yet built — see [Roadmap](#roadmap).
+> **Status: storage core complete.** Entities, three storage backends, archetype migration, direct and batch entity creation, tags, sparse sets, and queries are implemented, reviewed, and covered by 168 tests plus an invariant fuzzer. Networking (delta replication), systems (command buffers, tick stages, parallelism), and client-side prediction are designed but not yet built — see [Roadmap](#roadmap).
 
 ## Design in one screen
 
@@ -20,7 +20,7 @@ Putting a tag into an archetype column, or vice versa, is a **compile error** �
 
 - **Entities** are a generational index. A paged record table (`EntityRecord[][]`) records where each entity physically lives; a `ref` into it survives any amount of growth.
 - **Chunks** are 16 KB, column-wise (SoA), on the Pinned Object Heap. The `Entity` column is mandatory and first. One pool serves the whole world because all chunks are the same size.
-- **Archetypes** are never deleted; they hold a lazy transition graph so `Add<T>`/`Remove<T>` migrate an entity in one dictionary lookup. Empty chunks return to the pool with hysteresis.
+- **Archetypes** are never deleted; they hold a lazy transition graph so `Add<T>`/`Remove<T>` migrate an entity in one dictionary lookup. Empty chunks return to the pool with hysteresis. `Create<T…>` and `CreateMany<T…>` place an entity straight into its final archetype, skipping the per-`Add` migration chain entirely.
 - **Tags** don't change archetype identity, so `SetTag`/`UnsetTag` are non-structural (no migration). Each chunk caches a conservative `TagUnion` so a query can skip a whole chunk when no row carries a required tag.
 - **Queries** match archetypes by a 256-bit mask, cache the match list incrementally (a cursor, never a full rescan), and iterate chunks. A query that requires a sparse component is driven by the smallest such set instead of scanning every chunk.
 
@@ -43,10 +43,18 @@ public struct Buff     : ISparse { public int Id; public float Until; }
 
 var world = new World();
 
-// Create an entity and give it archetype components.
-var e = world.Create();
-world.Add(e, new Position { X = 0, Y = 0, Z = 0 });
-world.Add(e, new Velocity { X = 1, Y = 0, Z = 0 });
+// Create an entity directly in its final archetype — no per-Add migration.
+var e = world.Create(
+    new Position { X = 0, Y = 0, Z = 0 },
+    new Velocity { X = 1, Y = 0, Z = 0 });
+
+// Batch-spawn many entities of one archetype in a single sized fill (waves, volleys).
+Span<Entity> wave = stackalloc Entity[64];
+world.CreateMany<Position, Velocity>(64, wave);
+
+// Building incrementally still works; each Add migrates to the next archetype.
+// var e2 = world.Create();
+// world.Add(e2, new Position());
 
 // Tags are a bit flip — no migration.
 world.SetTag<Stunned>(e);
@@ -104,11 +112,11 @@ Chunk iteration (`foreach (var chunk in q)`) is rejected for a query built with 
 
 ```bash
 dotnet build                       # build all projects
-dotnet test                        # 152 tests in Debug, 151 in Release
+dotnet test                        # 168 tests in Debug, 166 in Release
 dotnet run -c Release --project bench/UvEcs.Bench   # benchmarks (not in CI)
 ```
 
-The Debug build wires one extra safety net: iterating a query while making a structural change (`Add`/`Remove`/`Create`/`Destroy`) throws, instead of corrupting the iteration silently. It compiles out entirely in Release, which is why Debug has one more test than Release.
+The Debug build wires two extra safety nets that compile out entirely in Release: iterating a query while making a structural change (`Add`/`Remove`/`Create`/`Destroy`) throws instead of corrupting the iteration silently, and `Create<T…>` with a duplicated component type throws. That is why Debug runs two more tests than Release.
 
 ## Testing approach
 
